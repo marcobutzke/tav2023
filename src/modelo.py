@@ -3,58 +3,15 @@ import numpy as np
 from sklearn.cluster import KMeans
 from prophet import Prophet
 from sklearn.preprocessing import StandardScaler
-import tensorflow as tf
 from sklearn.neighbors import NearestNeighbors
 from pyod.models.knn import KNN
 
 from funcoes import zscore, rfm_variables, fit_data
-data = pd.read_feather('dados/gs.feather')
+data = pd.read_feather('../dados/gs.feather')
 variaveis = [
     'f_vendas', 'f_lucro', 'm_entrega', 'm_lucro', 'm_qtde',
     'm_vendas', 'r_dias'
 ]
-
-
-def deep_learning_dnn(df_dl, dep_var, classes):
-    # Separa a variável dependente das demais
-    deep_feat = df_dl.drop(columns=[dep_var], axis=1)
-    deep_label = df_dl[dep_var]
-    # Verifica os tipos das variáveis
-        # Verifica as colunas para normalização - as demais serão discretizadas - Função Bucketize do Tensor Flow
-    categorical_columns = [col for col in deep_feat.columns if len(deep_feat[col].unique()) == 2 or deep_feat[col].dtype == 'O']
-    continuous_columns = [col for col in deep_feat.columns if len(deep_feat[col].unique()) > 2 and (deep_feat[col].dtype == 'int64' or deep_feat[col].dtype == 'float64')]    
-    cols_to_scale = continuous_columns[:]
-    #cols_to_scale.remove('meses')
-    # Ajusta as bases de treino e de teste
-    XX_T = df_dl.drop(columns=[dep_var], axis=1)
-    XX_t = df_dl.drop(columns=[dep_var], axis=1)
-    yy_T = df_dl[dep_var]
-    yy_t = df_dl[dep_var]
-    # Normaliza as variáveis nas bases de treino e teste
-    scaler = StandardScaler()
-    XX_T.loc[:, cols_to_scale] = scaler.fit_transform(XX_T.loc[:, cols_to_scale])
-    XX_t.loc[:, cols_to_scale] = scaler.fit_transform(XX_t.loc[:, cols_to_scale])
-    # Ajustes das Variáveis Categórica - Não presentes neste modelo
-    categorical_object_feat_cols = [tf.feature_column.embedding_column(
-    tf.feature_column.categorical_column_with_hash_bucket(key=col, hash_bucket_size=1000), dimension=len(df_dl[col].unique()))
-    for col in categorical_columns if df_dl[col].dtype == 'O']
-    # Ajustes das Variáveis Categórica - Não presentes neste modelo
-    categorical_integer_feat_cols = [tf.feature_column.embedding_column(
-    tf.feature_column.categorical_column_with_identity(key=col, num_buckets=2), dimension=len(df_dl[col].unique()))
-    for col in categorical_columns if df[col].dtype=='int64']
-    continuous_feat_cols = [tf.feature_column.numeric_column(key=col) for col in continuous_columns]
-    feat_cols = categorical_object_feat_cols + \
-                categorical_integer_feat_cols + \
-                continuous_feat_cols
-    # Rotina de DNN (Deep Neural Network)
-    input_fun = tf.compat.v1.estimator.inputs.pandas_input_fn(XX_T, yy_T, batch_size=50, num_epochs=1000, shuffle=True)
-    pred_input_fun = tf.compat.v1.estimator.inputs.pandas_input_fn(XX_t, batch_size=50, shuffle=False)
-    DNN_model = tf.estimator.DNNClassifier(hidden_units=[10, 10, 10], feature_columns=feat_cols, n_classes=classes)
-    DNN_model.train(input_fn=input_fun, steps=5000)
-    # Resgata os resultados da DNN
-    predictions = DNN_model.predict(pred_input_fun)
-    pred = list(predictions)
-    return pred
 
 
 def outliers_detection(orig, vars):
@@ -65,3 +22,91 @@ def outliers_detection(orig, vars):
     dataod = orig.copy()
     dataod['outlier'] = outliers
     return dataod
+
+
+print('Cálculo da probabilidade de lucro por país...')
+# dimensao = 'Country'
+# medidas = ['Sales', 'Quantity', 'Profit']
+# grupo = data.groupby(dimensao)[medidas].mean().reset_index()
+# grupo['Benefit'] = grupo['Profit'].apply(lambda x : 0 if x < 0 else 1)
+# grupo = grupo.set_index(dimensao)
+# probabilidade = deep_learning_dnn(grupo, 'Benefit', 2)
+# probabilidade_classe = []
+# for i in range(len(probabilidade)):
+#     probabilidade_classe.append(probabilidade[i]["class_ids"][0])
+# probabilidade_prob0 = []
+# for i in range(len(probabilidade)):
+#     probabilidade_prob0.append(probabilidade[i]["probabilities"][0])
+# probabilidade_prob1 = []
+# for i in range(len(probabilidade)):
+#     probabilidade_prob1.append(probabilidade[i]["probabilities"][1])
+# grupo['dl_classe'] = probabilidade_classe
+# grupo['lucro_0'] = probabilidade_prob0
+# grupo['lucro_1'] = probabilidade_prob1
+# grupo.to_feather('../dados/probabilidade_pais.feather')   
+
+# print('Cálculo da associação por país')
+# original = fit_data(data, 'Country')
+# original = original.fillna(0)
+# base = original[variaveis]
+# vizinhos = NearestNeighbors(n_neighbors=min(4, len(base))).fit(base)
+# similares = []
+# for index, row in original.iterrows():
+#     print('Referencia: {0}'.format(row['referencia']))
+#     original_referencia = original[
+#         original['referencia'] == row['referencia']][variaveis]
+#     similar = vizinhos.kneighbors(original_referencia, return_distance=False)[0]
+#     original_similar = original.iloc[similar][variaveis].reset_index()
+#     referencia = original.iloc[similar]['referencia'].reset_index()
+#     referencia = referencia.merge(original_similar, on='index', how='left')
+#     referencia = referencia.drop(columns=['index'])
+#     for ind, rw in referencia.iterrows():    
+#         if row['referencia'] != rw['referencia']:            
+#             similares.insert(0, [row['referencia'], rw['referencia']])
+# similares = pd.DataFrame(
+#     similares,
+#     columns = ['referencia', 'vizinho']
+# )            
+# similares.to_feather('../dados/knn_pais.feather')
+
+print('Classificação do Consumidor...')
+gr_con = data.groupby(
+    [
+        'Customer ID',
+        'Country',
+        'City',
+        'Market',
+        'Region'
+    ]
+)[
+    [
+        'Sales',
+        'Quantity',
+        'Profit',
+        'Shipping Cost'
+    ]
+].mean().reset_index()
+for col in gr_con.columns:
+    if col != 'Customer ID':
+        if gr_con[col].dtype == 'int64':
+            gr_con = zscore(gr_con, col, 'Profit', 'z'+col)
+        else:
+            gr_con = zscore(gr_con, 'Customer ID', col, 'z'+col)
+gr_con['score'] = gr_con['zMarket'] \
+                + gr_con['zRegion'] \
+                + gr_con['zCountry'] \
+                + gr_con['zCity'] \
+                + gr_con['zSales'] \
+                + gr_con['zQuantity'] \
+                + gr_con['zProfit'] \
+                + gr_con['zShipping Cost']
+media_score = gr_con['score'].mean()
+dpadr_score = gr_con['score'].std()
+gr_con['classe'] = gr_con['score'].apply(lambda x : int((x - media_score) / dpadr_score) + 3)
+gr_con['classe'] = gr_con['classe'].apply(lambda x : 0 if x < 0 else x)
+gr_con['classe'] = gr_con['classe'].apply(lambda x : 6 if x > 6 else x)
+gr_con['rank'] = gr_con['score'].rank(ascending=False)
+gr_con['lucro'] = gr_con['valor_lucro'].apply(lambda x : 0 if x < 0 else 1)
+gr_con.to_feather('../dados/classificacao_consumidor.feather')
+
+print('Concluído!')
