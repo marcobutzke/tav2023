@@ -54,3 +54,12 @@ def fit_data(data, variable):
             'f_lucro'
         ]
     )
+
+def outliers_detection(orig, vars):
+    sc_x = StandardScaler()
+    datax = sc_x.fit_transform(vars)
+    clf = KNN().fit(vars)
+    outliers = clf.predict(vars)
+    dataod = orig.copy()
+    dataod['outlier'] = outliers
+    return dataod
