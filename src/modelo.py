@@ -93,4 +93,124 @@ gr_con['rank'] = gr_con['score'].rank(ascending=False)
 gr_con['lucro'] = gr_con['Profit'].apply(lambda x : 0 if x < 0 else 1)
 gr_con.to_feather('../dados/classificacao_consumidor.feather')
 
+print('Clusterização por país...')
+country_rfm = fit_data(data, 'Country')
+country_rfm = country_rfm.fillna(0)
+country_rfm['cluster'] = KMeans(
+    n_clusters=3,
+    random_state=0,
+    n_init='auto'
+).fit(
+    country_rfm[
+        variaveis
+    ]
+).labels_
+cluster = []
+for index, row in enumerate(KMeans(n_clusters=5, random_state=0, n_init='auto'
+    ).fit(country_rfm[variaveis]).cluster_centers_):
+    cluster.insert(0, 
+        [index, row[0], row[1], row[2], row[3], row[4], row[5], row[6]]
+    )
+cluster = pd.DataFrame(
+    cluster,
+    columns = [
+        'cluster', 'clf_vendas', 'cls_lucro', 'clm_entrega',
+        'clm_lucro', 'clm_qtde', 'clm_vendas', 'clr_dias'
+    ]
+)
+country_rfm = country_rfm.merge(
+    cluster,
+    on='cluster',
+    how='left'
+)
+country_rfm.to_feather('../dados/clusterizacao_pais.feather')
+
+print('Regressão (com sazonalidades) por Mercado e Regiao...')
+regressao_market_region = pd.DataFrame()
+primeiro = 0
+for index, row in data[['Market', 'Region']].drop_duplicates().iterrows():
+    regressao = data[
+        (data['Market'] == row['Market']) &
+        (data['Region'] == row['Region'])
+    ][['Order Date Month', 'Sales']
+    ].groupby('Order Date Month')['Sales'].sum().reset_index()
+    regressao = regressao.rename(columns={
+        'Order Date Month': 'ds', 'Sales': 'y'
+    })
+    m = Prophet().fit(regressao)
+    future = m.make_future_dataframe(periods=12, freq='MS')
+    forecast = m.predict(future)
+    forecast['Market'] = row['Market']
+    forecast['Region'] = row['Region']
+    forecast = forecast.merge(regressao, on='ds', how='left')
+    forecast = forecast[
+        ['Market', 'Region', 'ds', 'yhat', 'y', 'yhat_lower', 'yhat_upper']
+    ].copy()
+    if primeiro == 0:
+        regressao_market_region = forecast
+        primeiro = 1
+    else:
+        regressao_market_region = pd.concat(
+            [
+                regressao_market_region,
+                forecast
+            ]
+        )       
+regressao_market_region = regressao_market_region.reset_index()         
+regressao_market_region.to_feather('../dados/regressao_mercado_regiao.feather')
+
+print('Detecção de Anomalias por País...')
+df_out = fit_data(data, 'Country')
+out = df_out[variaveis].fillna(0).copy()
+outliers = outliers_detection(df_out, out)
+outliers.to_feather('../dados/outliers_pais.feather')
+
+print('Cálculo da associação por subcategoria')
+original = fit_data(data, 'Sub-Category')
+original = original.fillna(0)
+base = original[variaveis]
+vizinhos = NearestNeighbors(n_neighbors=min(4, len(base))).fit(base)
+similares = []
+for index, row in original.iterrows():
+    # print('Referencia: {0}'.format(row['referencia']))
+    original_referencia = original[
+        original['referencia'] == row['referencia']][variaveis]
+    similar = vizinhos.kneighbors(original_referencia, return_distance=False)[0]
+    original_similar = original.iloc[similar][variaveis].reset_index()
+    referencia = original.iloc[similar]['referencia'].reset_index()
+    referencia = referencia.merge(original_similar, on='index', how='left')
+    referencia = referencia.drop(columns=['index'])
+    for ind, rw in referencia.iterrows():    
+        if row['referencia'] != rw['referencia']:            
+            similares.insert(0, [row['referencia'], rw['referencia']])
+similares = pd.DataFrame(
+    similares,
+    columns = ['referencia', 'vizinho']
+)            
+similares.to_feather('../dados/knn_subcategoria.feather')
+
+print('Cálculo da associação por produto')
+original = fit_data(data, 'Product Name')
+original = original.fillna(0)
+base = original[variaveis]
+vizinhos = NearestNeighbors(n_neighbors=min(4, len(base))).fit(base)
+similares = []
+for index, row in original.iterrows():
+    # print('Referencia: {0}'.format(row['referencia']))
+    original_referencia = original[
+        original['referencia'] == row['referencia']][variaveis]
+    similar = vizinhos.kneighbors(original_referencia, return_distance=False)[0]
+    original_similar = original.iloc[similar][variaveis].reset_index()
+    referencia = original.iloc[similar]['referencia'].reset_index()
+    referencia = referencia.merge(original_similar, on='index', how='left')
+    referencia = referencia.drop(columns=['index'])
+    for ind, rw in referencia.iterrows():    
+        if row['referencia'] != rw['referencia']:            
+            similares.insert(0, [row['referencia'], rw['referencia']])
+similares = pd.DataFrame(
+    similares,
+    columns = ['referencia', 'vizinho']
+)            
+similares.to_feather('../dados/knn_produto.feather')
+
 print('Concluído!')

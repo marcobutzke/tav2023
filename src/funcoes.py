@@ -1,4 +1,6 @@
 import pandas as pd
+from sklearn.preprocessing import StandardScaler
+from pyod.models.knn import KNN
 
 def zscore(df, grupo, var, score):
     media = df[var].mean()
