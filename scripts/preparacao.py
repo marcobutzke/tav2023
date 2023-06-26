@@ -3,7 +3,7 @@ import numpy as np
 import datetime as dt
 
 print('Leitura dos dados originais...')
-data = pd.read_excel('origem/GS.xlsx')
+data = pd.read_excel('../origem/GS.xlsx')
 
 print('--> Preparação dos Dados...')
 
@@ -15,6 +15,7 @@ data['Year'] = data['Order Date'].dt.year
 data['Month'] = data['Order Date'].dt.month
 data['Period'] = ((data['Year'] - data['Year'].min()) * 12) + data['Month']
 data['Order Date Month'] = data['Order Date'].apply(lambda x : x.strftime("%Y-%m-01"))
+data['Order Date Month']= pd.to_datetime(data['Order Date Month'])
 
 print('Novas medidas... Delivery e Price')
 data['Delivery'] = (data['Ship Date'] - data['Order Date']).dt.days
@@ -24,22 +25,22 @@ print('Variável Dependente: Benefit...')
 data['Benefit'] = data['Profit'].apply(lambda x : 1 if x > 0 else 0)
 
 print('--> Gravando dados preparados...')
-data.to_feather('dados/gs.feather')
+data.to_feather('../dados/gs.feather')
 
 print('Coordenadas...')
 print('Leitura dos países')
 country = pd.read_json(
-    'origem/countries.json', 
+    '../origem/countries.json', 
     orient='index'
 ).reset_index()
 country = country.drop(columns=['native'])
 print('Leitura dos continentes...')
 continent = pd.read_json(
-    'origem/continents.json', 
+    '../origem/continents.json', 
     orient='index'
 ).reset_index()
 print('Leitura das Cidades...')
-cities = pd.read_json('origem/cities.json')
+cities = pd.read_json('../origem/cities.json')
 grupo = cities.groupby('country')[
     [
         'lat', 
@@ -132,5 +133,5 @@ localizacao = pd.DataFrame(
 localizacao = localizacao.fillna(0)
 # localizacao = localizacao.drop(columns=['index'])
 print('Salvando localização das cidades...')
-localizacao.to_feather('dados/localizacao.feather')
+localizacao.to_feather('../dados/localizacao.feather')
 print('Concluido')
